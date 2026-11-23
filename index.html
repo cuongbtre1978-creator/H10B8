@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="vi">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Định luật tuần hoàn · Video tương tác</title>
+<style>
+*{box-sizing:border-box} body{margin:0;background:#101827;color:#f8fafc;font:1rem/1.55 system-ui,sans-serif} main{max-width:940px;margin:auto;padding:20px} h1{margin:0;font-size:clamp(1.5rem,5vw,2.4rem)} video{display:block;width:100%;background:#000;border-radius:12px;max-height:58vh} nav{display:flex;align-items:center;gap:16px;margin:12px 0} button{font:inherit;cursor:pointer;border:0;border-radius:8px;padding:10px 16px;background:#fde047;color:#172033} button:disabled{opacity:.6;cursor:default} button:focus-visible{outline:3px solid #7dd3fc;outline-offset:3px} section{background:#1e293b;padding:18px;border-radius:12px} h2{margin:0 0 8px;font-size:1.2rem} #choices{display:grid;gap:8px} #choices button{text-align:left;background:#f1f5f9} #choices button.wrong{background:#fecaca} #choices button.right{background:#bbf7d0} #feedback{margin-bottom:0} #status{color:#cbd5e1}
+</style>
+<main>
+<h1>Định luật tuần hoàn</h1>
+<p>Trả lời đúng để xem tiếp. Nếu trả lời sai, em có thể chọn lại.</p>
+<video id="video" src="video.mp4" playsinline preload="metadata" disablepictureinpicture></video>
+<nav><button id="toggle" type="button">Phát video</button><span id="time">00:00</span><span id="count">0/5 câu đúng</span></nav>
+<div id="status" role="status"></div>
+<section id="quiz" hidden aria-labelledby="heading">
+<h2 id="heading" tabindex="-1"></h2>
+<p id="question"></p>
+<div id="choices"></div>
+<p id="feedback" role="status"></p>
+</section>
+</main>
+<script>
+const questions = [
+  [105, 'Khi sắp xếp các nguyên tố theo chiều tăng dần của điện tích hạt nhân, tính chất của chúng biến đổi như thế nào?',
+    ['Tăng dần liên tục.', 'Biến đổi tuần hoàn.', 'Giảm dần liên tục.', 'Giữ nguyên.'], 1,
+    'Tính chất biến đổi theo quy luật và có sự lặp lại qua các chu kì.'],
+  [130, 'Khi để trống một số vị trí trong bảng tuần hoàn, Mendeleev đã dùng quy luật tuần hoàn để làm gì?',
+    ['Xác định số neutron của mọi nguyên tố.', 'Tính khối lượng của mọi hợp chất.', 'Kết luận các vị trí đó sẽ luôn để trống.', 'Dự đoán sự tồn tại và một số tính chất của các nguyên tố chưa được phát hiện.'], 3,
+    'Từ vị trí còn trống, Mendeleev dự đoán được một số tính chất của nguyên tố chưa được phát hiện.'],
+  [177, 'Theo bảng dữ kiện trong video, nguyên tố nào có Z = 19 và thuộc chu kì 4?',
+    ['Kali (K).', 'Magie (Mg).', 'Cả kali và magie.', 'Cả hai nguyên tố đều không phù hợp.'], 0,
+    'Kali có Z = 19, thuộc chu kì 4. Magie có Z = 12, thuộc chu kì 3.'],
+  [212, 'Vì sao điện tích hạt nhân là chìa khóa để giải thích sự biến đổi tính chất hóa học của các nguyên tố?',
+    ['Vì điện tích hạt nhân cho biết số neutron, mà số neutron quyết định tính chất hóa học.', 'Vì các nguyên tố có điện tích hạt nhân khác nhau luôn có số electron lớp ngoài cùng khác nhau.', 'Vì điện tích hạt nhân xác định số electron của nguyên tử trung hòa, và cách các electron phân bố, đặc biệt ở lớp ngoài cùng, chi phối tính chất hóa học.', 'Vì điện tích hạt nhân càng lớn thì mọi nguyên tố càng dễ phản ứng hóa học.'], 2,
+    'Nguyên tử trung hòa có số electron bằng số proton. Cấu hình electron, đặc biệt ở lớp ngoài cùng, giúp giải thích tính chất hóa học.'],
+  [248, 'Một nguyên tố thuộc nhóm IA và nằm ngay dưới kali (K) trong bảng tuần hoàn. Dự đoán nào hợp lí nhất?',
+    ['Nguyên tố đó có cùng số lớp electron với kali.', 'Nguyên tố đó có một electron lớp ngoài cùng và có thể có tính chất hóa học tương tự kali.', 'Nguyên tố đó có cùng điện tích hạt nhân với kali.', 'Nguyên tố đó có lớp electron ngoài cùng đã bão hòa.'], 1,
+    'Các kim loại kiềm cùng nhóm IA có một electron lớp ngoài cùng.']
+];
+
+const get = id => document.getElementById(id);
+const video = get('video');
+const toggle = get('toggle');
+const quiz = get('quiz');
+const choices = get('choices');
+const feedback = get('feedback');
+const status = get('status');
+const correctSound = new Audio('d.mp3');
+const wrongSound = new Audio('s.mp3');
+let next = 0;
+let locked = false;
+
+function playVideo() {
+  if (locked) return;
+  status.textContent = '';
+  video.play().catch(() => {
+    if (!locked && video.paused) status.textContent = video.error ? 'Không mở được video. Kiểm tra tệp video.mp4 trong cùng thư mục với tệp HTML.' : 'Hãy bấm Phát video để tiếp tục.';
+  });
+}
+
+function playSound(sound) {
+  sound.pause();
+  sound.currentTime = 0;
+  return new Promise(resolve => {
+    function finish() {
+      sound.removeEventListener('ended', finish);
+      sound.removeEventListener('error', finish);
+      resolve();
+    }
+    sound.addEventListener('ended', finish);
+    sound.addEventListener('error', finish);
+    sound.play().catch(finish);
+  });
+}
+
+function showQuestion() {
+  const [at, prompt, options, answer, explanation] = questions[next];
+  locked = true;
+  video.pause();
+  if (video.currentTime !== at) video.currentTime = at;
+  toggle.disabled = true;
+  status.textContent = '';
+  get('heading').textContent = 'Câu ' + (next + 1) + '/5';
+  get('question').textContent = prompt;
+  feedback.textContent = '';
+  choices.replaceChildren();
+  options.forEach((option, index) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = 'ABCD'[index] + '. ' + option;
+    button.addEventListener('click', async () => {
+      video.pause();
+      if (index !== answer) {
+        button.className = 'wrong';
+        feedback.textContent = 'Chưa đúng. Em hãy chọn lại.';
+        wrongSound.currentTime = 0;
+        wrongSound.play().catch(() => {});
+        return;
+      }
+      wrongSound.pause();
+      button.className = 'right';
+      for (const choice of choices.children) choice.disabled = true;
+      feedback.textContent = 'Chính xác! ' + explanation;
+      next++;
+      get('count').textContent = next + '/5 câu đúng';
+      await playSound(correctSound);
+      status.textContent = feedback.textContent;
+      quiz.hidden = true;
+      locked = false;
+      toggle.disabled = false;
+      toggle.focus();
+      video.play().catch(() => {
+        status.textContent += ' Bấm Phát video để tiếp tục.';
+      });
+    });
+    choices.append(button);
+  });
+  quiz.hidden = false;
+  get('heading').focus();
+}
+
+function checkTime() {
+  const seconds = Math.floor(video.currentTime);
+  get('time').textContent = [Math.floor(seconds / 60), seconds % 60]
+    .map(value => String(value).padStart(2, '0')).join(':');
+  if (!locked && next < questions.length && video.currentTime >= questions[next][0]) showQuestion();
+}
+
+video.addEventListener('timeupdate', checkTime);
+video.addEventListener('seeking', checkTime);
+video.addEventListener('play', () => {
+  if (locked) video.pause();
+  else toggle.textContent = 'Tạm dừng';
+});
+video.addEventListener('pause', () => { toggle.textContent = 'Phát video'; });
+video.addEventListener('error', () => {
+  status.textContent = 'Hãy đặt video.mp4 cùng thư mục với tệp HTML.';
+});
+video.addEventListener('ended', () => {
+  if (locked) return;
+  toggle.textContent = 'Xem lại từ đầu';
+  status.textContent = 'Hoàn thành! Em đã trả lời đúng 5/5 câu.';
+});
+toggle.addEventListener('click', () => {
+  if (locked) return;
+  if (video.ended) {
+    video.currentTime = 0;
+    next = 0;
+    get('count').textContent = '0/5 câu đúng';
+  }
+  if (video.paused) playVideo();
+  else video.pause();
+});
+</script>
+</html>
